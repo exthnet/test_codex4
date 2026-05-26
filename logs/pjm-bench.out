@@ -1,0 +1,47 @@
+rm -rf build
+mkdir -p build
+gcc -std=gnu11 -O3 -Wall -Wextra -Wpedantic -o build/gemm_bf16 src/gemm_bf16.c -lm
+=== CPU INFO ===
+アーキテクチャ:                      x86_64
+CPU 操作モード:                      32-bit, 64-bit
+バイト順序:                          Little Endian
+CPU:                                 120
+オンラインになっている CPU のリスト: 0-119
+コアあたりのスレッド数:              1
+ソケットあたりのコア数:              60
+ソケット数:                          2
+NUMA ノード数:                       8
+ベンダー ID:                         GenuineIntel
+CPU ファミリー:                      6
+モデル:                              143
+モデル名:                            Intel(R) Xeon(R) Platinum 8490H
+ステッピング:                        8
+CPU MHz:                             1900.000
+CPU 最大 MHz:                        3500.0000
+CPU 最小 MHz:                        800.0000
+BogoMIPS:                            3800.00
+L1d キャッシュ:                      48K
+L1i キャッシュ:                      32K
+L2 キャッシュ:                       2048K
+L3 キャッシュ:                       115200K
+NUMA ノード 0 CPU:                   0-14
+NUMA ノード 1 CPU:                   15-29
+NUMA ノード 2 CPU:                   30-44
+NUMA ノード 3 CPU:                   45-59
+NUMA ノード 4 CPU:                   60-74
+NUMA ノード 5 CPU:                   75-89
+NUMA ノード 6 CPU:                   90-104
+NUMA ノード 7 CPU:                   105-119
+フラグ:                              fpu vme de pse tsc msr pae mce cx8 apic sep mtrr pge mca cmov pat pse36 clflush dts acpi mmx fxsr sse sse2 ss ht tm pbe syscall nx pdpe1gb rdtscp lm constant_tsc art arch_perfmon pebs bts rep_good nopl xtopology nonstop_tsc cpuid aperfmperf tsc_known_freq pni pclmulqdq dtes64 monitor ds_cpl smx est tm2 ssse3 sdbg fma cx16 xtpr pdcm pcid dca sse4_1 sse4_2 x2apic movbe popcnt tsc_deadline_timer aes xsave avx f16c rdrand lahf_lm abm 3dnowprefetch cpuid_fault epb cat_l3 cat_l2 cdp_l3 invpcid_single intel_ppin cdp_l2 ssbd mba ibrs ibpb stibp ibrs_enhanced fsgsbase tsc_adjust bmi1 avx2 smep bmi2 erms invpcid cqm rdt_a avx512f avx512dq rdseed adx smap avx512ifma clflushopt clwb intel_pt avx512cd sha_ni avx512bw avx512vl xsaveopt xsavec xgetbv1 xsaves cqm_llc cqm_occup_llc cqm_mbm_total cqm_mbm_local split_lock_detect avx_vnni avx512_bf16 wbnoinvd dtherm ida arat pln pts hwp hwp_act_window hwp_epp hwp_pkg_req avx512vbmi umip pku ospke waitpkg avx512_vbmi2 gfni vaes vpclmulqdq avx512_vnni avx512_bitalg tme avx512_vpopcntdq la57 rdpid bus_lock_detect cldemote movdiri movdir64b enqcmd fsrm md_clear serialize tsxldtrk pconfig arch_lbr amx_bf16 avx512_fp16 amx_tile amx_int8 flush_l1d arch_capabilities
+=== CPU FLAGS (first match) ===
+flags		: fpu vme de pse tsc msr pae mce cx8 apic sep mtrr pge mca cmov pat pse36 clflush dts acpi mmx fxsr sse sse2 ss ht tm pbe syscall nx pdpe1gb rdtscp lm constant_tsc art arch_perfmon pebs bts rep_good nopl xtopology nonstop_tsc cpuid aperfmperf tsc_known_freq pni pclmulqdq dtes64 monitor ds_cpl smx est tm2 ssse3 sdbg fma cx16 xtpr pdcm pcid dca sse4_1 sse4_2 x2apic movbe popcnt tsc_deadline_timer aes xsave avx f16c rdrand lahf_lm abm 3dnowprefetch cpuid_fault epb cat_l3 cat_l2 cdp_l3 invpcid_single intel_ppin cdp_l2 ssbd mba ibrs ibpb stibp ibrs_enhanced fsgsbase tsc_adjust bmi1 avx2 smep bmi2 erms invpcid cqm rdt_a avx512f avx512dq rdseed adx smap avx512ifma clflushopt clwb intel_pt avx512cd sha_ni avx512bw avx512vl xsaveopt xsavec xgetbv1 xsaves cqm_llc cqm_occup_llc cqm_mbm_total cqm_mbm_local split_lock_detect avx_vnni avx512_bf16 wbnoinvd dtherm ida arat pln pts hwp hwp_act_window hwp_epp hwp_pkg_req avx512vbmi umip pku ospke waitpkg avx512_vbmi2 gfni vaes vpclmulqdq avx512_vnni avx512_bitalg tme avx512_vpopcntdq la57 rdpid bus_lock_detect cldemote movdiri movdir64b enqcmd fsrm md_clear serialize tsxldtrk pconfig arch_lbr amx_bf16 avx512_fp16 amx_tile amx_int8 flush_l1d arch_capabilities
+=== BASELINE SMOKE TEST ===
+kernel: baseline
+shape: 64 x 64 x 64
+repeats: 1
+best_seconds: 0.000184906
+gflops: 2.835
+max_abs_err: 0.00000000e+00
+max_rel_err: 0.00000000e+00
+=== AMX BENCHMARKS ===
+scripts/run_benchmarks.sh: 行 22: s/bench.csv: そのようなファイルやディレクトリはありません
