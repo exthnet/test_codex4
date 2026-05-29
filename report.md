@@ -1,31 +1,51 @@
-# AMX BF16 GEMM Report
+# AMX BF16 GEMM レポート
 
-## Objective
+## 現在の状況
 
-Optimize single-core `bf16 * bf16 -> fp32` GEMM with Intel AMX on Sapphire Rapids.
+最終更新日: `2026-05-29`
 
-## Current Implementation
+このリポジトリには、Intel Sapphire Rapids 上で Intel AMX BF16 命令を用いて
+単一コアの `bf16 * bf16 -> fp32` GEMM を実行する試作実装が含まれている。
+現在の実装はローカルでビルド可能であり、AMX 対応の計算ノード上で動作することを確認済みで、
+`2048 x 2048 x 2048` までのベンチマーク結果が検証済みである。
+
+## 目的
+
+OpenMP や MPI を用いずに、Intel Sapphire Rapids 上で単一コアの
+`bf16 * bf16 -> fp32` GEMM を Intel AMX により高速化することを目的とする。
+
+## 現在の実装
 
 - `src/gemm_bf16.c`
-  - Baseline triple-loop GEMM
-  - AMX BF16 GEMM with `16 x 16 x 32` blocking
-  - B-matrix prepacking by `(K-block, N-block)` tile
-  - On-the-fly A-panel packing
-  - Correctness check against baseline
+  - 正しさ確認用のベースライン三重ループ GEMM
+  - `TDPBF16PS` を用いた AMX BF16 GEMM カーネル
+  - `16 x 16 x 32` のブロッキング構成
+  - `(K-block, N-block)` 単位の B 行列事前パッキング
+  - A パネルのオンザフライパッキング
+  - ベースライン実装との正しさ比較
+- `Makefile`
+  - 汎用 `gcc -O3` ビルド
+  - AMX 向け target attribute は AMX 専用関数にのみ適用
 - `scripts/run_benchmarks.sh`
-  - Compute-node benchmark driver
+  - 計算ノード用のベンチマーク実行スクリプト
+  - 結果を `results/bench.csv` に CSV 形式で保存
 - `scripts/submit_pjm_bench.sh`
-  - PJM submission script for `a-batch-low`, `node=1`, `elapse=10:00`
+  - `PJM_O_WORKDIR` を優先して利用する PJM バッチ投入スクリプト
 
-## Bugs Found and Fixed
+## 発見した問題と修正内容
 
-1. Compute-node execution initially failed because the job script relied on `dirname "$0"`; fixed by preferring `PJM_O_WORKDIR`.
-2. Early AMX runs failed with `Illegal instruction` because the whole binary was compiled for Sapphire Rapids. Fixed by using generic compilation and applying AMX target attributes only to AMX functions.
-3. The AMX BF16 B-tile configuration was incorrect. `TDPBF16PS` requires each B tile row to hold `2 * N` bf16 values, i.e. `4 * N` bytes. Fixing `colsb[2]` resolved the AMX execution failure.
+1. 計算ノード上での実行が、バッチスクリプト内で `dirname "$0"` に依存していたため失敗した。
+   これを `PJM_O_WORKDIR` を優先する形に修正した。
+2. 初期の AMX 実行では `Illegal instruction` が発生した。
+   原因はバイナリ全体を Sapphire Rapids 向けにコンパイルしていたことであり、
+   メインバイナリは汎用設定のままにし、AMX 命令生成は AMX 関数のみに限定するよう修正した。
+3. AMX BF16 の B タイル設定が誤っていた。
+   `TDPBF16PS` では B タイルの各行に `2 * N` 個の bf16 値、すなわち `4 * N` バイトが必要である。
+   `colsb[2]` を修正することで AMX 実行失敗を解消した。
 
-## Partial Results
+## 計測結果
 
-Measured on compute node:
+以下は `results/bench.csv` に現在記録されているベンチマーク結果である。
 
 | Kernel | M | N | K | Repeats | Time [s] | GFLOPS | Max Abs Err | Max Rel Err |
 |---|---:|---:|---:|---:|---:|---:|---:|---:|
@@ -34,16 +54,46 @@ Measured on compute node:
 | AMX | 1024 | 1024 | 1024 | 3 | 0.024887946 | 86.286 | 4.20e-05 | 2.50e-01 |
 | AMX | 2048 | 2048 | 2048 | 2 | 0.191187412 | 89.859 | 1.11e-04 | 1.80e+00 |
 
-## Observations
+## 観察
 
-- The AMX kernel is functioning on Sapphire Rapids compute nodes.
-- Performance is roughly `86-111 GFLOPS` in the currently tested range.
-- Relative error grows with problem size. This is expected to some extent because the reference and the AMX kernel accumulate in different orders, but it should still be monitored.
-- The benchmark script was edited while jobs were running, so large-size results beyond `2048^3` should be re-run cleanly before treating them as final.
+- Intel Xeon Platinum 8490H を搭載した計算ノードにおいて、
+  `amx_tile` および `amx_bf16` 対応のもとで AMX BF16 カーネルが動作することを確認した。
+- 現在の測定範囲では、単一コア性能はおおむね `86-111 GFLOPS` である。
+- 問題サイズが大きくなるにつれて相対誤差は増加している。
+  これはベースライン実装と AMX 実装で加算順序が異なるためある程度は想定されるが、
+  大規模ケースでは引き続き注意して確認する必要がある。
+- ベンチマークスクリプト自体は `4096^3`、`10000^3`、およびベースライン比較ケースを実行できるが、
+  それらの結果はまだコミット済み CSV には含まれていない。
 
-## Next Steps
+## 現時点の制約
 
-1. Re-run a stable benchmark pass for `4096^3`, `10000^3`, and the baseline cases.
-2. Try reducing AMX configuration overhead by keeping tile configuration loaded across inner loops.
-3. Compare against MKL if available in the environment.
-4. Generate plots from the final CSV and fold them into this report.
+- `4096 x 4096 x 4096` のコミット済みベンチマーク結果がまだない。
+- `10000 x 10000 x 10000` のコミット済みベンチマーク結果がまだない。
+- `results/bench.csv` には `256^3` および `512^3` のベースライン実行時間がまだ含まれていない。
+- `logs/pjm-bench.out` には、`results/bench.csv` を開けずに失敗した古い実行ログが含まれているため、
+  最終的なベンチマーク記録としては扱わない。
+
+## 再現手順
+
+ビルド:
+
+```bash
+module load gcc-toolset/13
+make clean all
+```
+
+バッチ投入:
+
+```bash
+pjsub scripts/submit_pjm_bench.sh
+```
+
+## AI 利用情報
+
+- リポジトリ保守およびレポート更新に利用した AI:
+  OpenAI Codex, GPT-5-based coding agent
+- このレポート更新の実施日: `2026-05-29`
+
+AI は文書の更新と、リポジトリの現状に合わせた整合確認に利用した。
+性能値および実装上の事実は、主に `results/bench.csv`、`WORKLOG.md`、`src/gemm_bf16.c`
+に基づいて記載している。
