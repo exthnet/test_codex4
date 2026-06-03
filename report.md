@@ -29,6 +29,10 @@ OpenMP や MPI を用いずに、Intel Sapphire Rapids 上で単一コアの
 - `scripts/run_benchmarks.sh`
   - 計算ノード用のベンチマーク実行スクリプト
   - 結果を `results/bench.csv` に CSV 形式で保存
+- `scripts/run_flag_sweep.sh`
+  - コンパイルフラグ差分の比較を行う計算ノード用スクリプト
+- `scripts/run_pin_sweep.sh`
+  - CPU ピニング条件の差分を比較する計算ノード用スクリプト
 - `scripts/submit_pjm_bench.sh`
   - `PJM_O_WORKDIR` を優先して利用する PJM バッチ投入スクリプト
 
@@ -68,6 +72,26 @@ OpenMP や MPI を用いずに、Intel Sapphire Rapids 上で単一コアの
 - ベンチマークスクリプト自体は `4096^3` およびベースライン比較ケースも実行できるが、
   それらの結果はまだコミット済み CSV には十分に反映されていない。
 
+## 最適化探索メモ
+
+`10000^3` の性能低下を受けて、コード変更とビルド条件の両方を比較した。
+
+- AMX カーネル内で `C` タイル保持を強める方向の小改造は、`2048^3` まで含めて悪化したため採用しなかった。
+- 一方で、計算ノード上のビルドを Sapphire Rapids 向けに明示した
+  `-march=sapphirerapids -mtune=sapphirerapids` は一貫して改善した。
+- `-funroll-loops` の追加効果は小さく、`-Ofast` は誤差傾向が悪化したため、
+  現時点の探索では `-O3 -march=sapphirerapids -mtune=sapphirerapids` を第一候補とみなす。
+- CPU ピニングの差は小さく、`AMX_PIN_CORE` の変更やピニング無効化による改善は最大でも数 % 程度だった。
+
+主要な比較結果は `results/flag-sweep.csv` および `results/pin-sweep.csv` に保存している。
+
+| Label | M | N | K | Time [s] | GFLOPS | Notes |
+|---|---:|---:|---:|---:|---:|---|
+| baseline | 10000 | 10000 | 10000 | 65.405337811 | 30.579 | 汎用 `-O3` |
+| spr | 10000 | 10000 | 10000 | 56.303368054 | 35.522 | `-O3 -march=sapphirerapids -mtune=sapphirerapids` |
+| spr_unroll | 10000 | 10000 | 10000 | 56.655778543 | 35.301 | `spr` より微悪化 |
+| nopin | 10000 | 10000 | 10000 | 57.838796273 | 34.579 | `spr` ビルド, ピニング無効 |
+
 ## 現時点の制約
 
 - `4096 x 4096 x 4096` のコミット済みベンチマーク結果がまだない。
@@ -81,7 +105,7 @@ OpenMP や MPI を用いずに、Intel Sapphire Rapids 上で単一コアの
 
 ```bash
 module load gcc-toolset/13
-make clean all
+make clean all CFLAGS="-std=gnu11 -O3 -Wall -Wextra -Wpedantic -march=sapphirerapids -mtune=sapphirerapids"
 ```
 
 バッチ投入:

@@ -2,7 +2,8 @@
 set -euo pipefail
 
 module load gcc-toolset/13
-make clean all
+BENCH_CFLAGS="-std=gnu11 -O3 -Wall -Wextra -Wpedantic -march=sapphirerapids -mtune=sapphirerapids"
+make clean all CFLAGS="$BENCH_CFLAGS"
 
 mkdir -p results
 echo "kernel,m,n,k,repeats,seconds,gflops,max_abs_err,max_rel_err" > results/bench.csv

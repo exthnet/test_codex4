@@ -340,9 +340,23 @@ static void gemm_amx(
 }
 
 static void pin_to_core_zero(void) {
+    const char *disable_pin = getenv("AMX_DISABLE_PIN");
+    if (disable_pin != NULL && disable_pin[0] != '\0' && strcmp(disable_pin, "0") != 0) {
+        return;
+    }
+
+    int core = 0;
+    const char *core_env = getenv("AMX_PIN_CORE");
+    if (core_env != NULL && core_env[0] != '\0') {
+        core = atoi(core_env);
+        if (core < 0) {
+            core = 0;
+        }
+    }
+
     cpu_set_t set;
     CPU_ZERO(&set);
-    CPU_SET(0, &set);
+    CPU_SET(core, &set);
     (void)sched_setaffinity(0, sizeof(set), &set);
 }
 

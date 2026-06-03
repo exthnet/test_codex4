@@ -4,7 +4,8 @@ set -euo pipefail
 cd "$(dirname "$0")/.."
 
 source /opt/rh/gcc-toolset-13/enable
-make clean all
+BENCH_CFLAGS="-std=gnu11 -O3 -Wall -Wextra -Wpedantic -march=sapphirerapids -mtune=sapphirerapids"
+make clean all CFLAGS="$BENCH_CFLAGS"
 
 mkdir -p results logs
 
