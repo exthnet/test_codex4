@@ -30,7 +30,7 @@
 6. Fixed an `Illegal instruction` issue caused by compiling the whole binary for Sapphire Rapids; the AMX target is now limited to AMX functions.
 7. Fixed the BF16 B-tile configuration. The B tile needed `4 * N` bytes per row, not `2 * N`.
 8. Verified that the AMX kernel runs on compute node and collected partial performance results through `2048^3`.
-9. Measured `10000^3` via PJM batch and recorded `65.150163505 s`, `30.698 GFLOPS` with `--no-verify`.
+9. Measured `10000^3` via PJM batch and initially recorded `65.150163505 s`, `30.698 GFLOPS` with `--no-verify`.
 10. Compared several compute-node build configurations for large sizes:
    - generic `-O3`
    - `-O3 -march=sapphirerapids -mtune=sapphirerapids`
@@ -42,6 +42,8 @@
    - `10000^3`: `30.579 -> 35.522 GFLOPS`
 12. Added `AMX_PIN_CORE` / `AMX_DISABLE_PIN` support to explore pinning effects and confirmed that pinning differences are minor for `10000^3`.
 13. Tried a small AMX-kernel restructuring aimed at keeping `C` tiles resident across K blocks; the result regressed and was intentionally discarded.
+14. Added a wider AMX macro-kernel that updates two `16 x 16` output tiles across N per A-tile load (`16 x 32 x 32` effective blocking at the outer-kernel level).
+15. Re-ran `10000^3` via PJM batch after the wider macro-kernel change and recorded `23.374218975 s`, `85.564 GFLOPS` with `--no-verify`.
 
 ## Partial Results
 
@@ -51,12 +53,13 @@
 | AMX | 512 | 512 | 512 | 5 | 0.002418624 | 110.987 | 1.53e-05 | 6.87e-02 |
 | AMX | 1024 | 1024 | 1024 | 3 | 0.024887946 | 86.286 | 4.20e-05 | 2.50e-01 |
 | AMX | 2048 | 2048 | 2048 | 2 | 0.191187412 | 89.859 | 1.11e-04 | 1.80e+00 |
+| AMX | 10000 | 10000 | 10000 | 1 | 23.374218975 | 85.564 | 0.00e+00 | 0.00e+00 |
 
 ## Current Issues
 
-- The committed `results/bench.csv` still reflects the earlier `10000^3` run (`30.698 GFLOPS`); the improved `spr` result has not yet been promoted to the main benchmark table.
+- The committed `results/bench.csv` now reflects the latest two-output-tile AMX kernel result for `10000^3` (`85.564 GFLOPS`).
 - Baseline comparisons for larger sizes are not yet collected on compute node.
-- The current AMX micro-kernel remains simple (`16x16x32`, one output tile at a time); larger structural changes were tested only briefly and need a cleaner redesign if pursued again.
+- The current AMX kernel still uses a simple packing strategy and now computes two neighboring output tiles per A-tile load; broader redesigns beyond this are still unexplored.
 
 ## Re-run Commands
 

@@ -165,7 +165,7 @@ static bool cpu_supports_amx(void) {
 }
 
 __attribute__((target("amx-tile,amx-bf16")))
-static void load_tilecfg(int m_rows, int n_cols, int k_bytes) {
+static void load_tilecfg_1col(int m_rows, int n_cols, int k_bytes) {
     tilecfg_t cfg;
     memset(&cfg, 0, sizeof(cfg));
     cfg.palette_id = 1;
@@ -177,6 +177,27 @@ static void load_tilecfg(int m_rows, int n_cols, int k_bytes) {
     cfg.rows[1] = (uint8_t)m_rows;
     cfg.colsb[2] = (uint16_t)(n_cols * (int)sizeof(float));
     cfg.rows[2] = (uint8_t)(k_bytes / 4);
+
+    _tile_loadconfig(&cfg);
+}
+
+__attribute__((target("amx-tile,amx-bf16")))
+static void load_tilecfg_2col(int m_rows, int n_cols0, int n_cols1, int k_bytes) {
+    tilecfg_t cfg;
+    memset(&cfg, 0, sizeof(cfg));
+    cfg.palette_id = 1;
+    cfg.start_row = 0;
+
+    cfg.colsb[0] = (uint16_t)(n_cols0 * (int)sizeof(float));
+    cfg.rows[0] = (uint8_t)m_rows;
+    cfg.colsb[1] = (uint16_t)(n_cols1 * (int)sizeof(float));
+    cfg.rows[1] = (uint8_t)m_rows;
+    cfg.colsb[2] = (uint16_t)k_bytes;
+    cfg.rows[2] = (uint8_t)m_rows;
+    cfg.colsb[3] = (uint16_t)(n_cols0 * (int)sizeof(float));
+    cfg.rows[3] = (uint8_t)(k_bytes / 4);
+    cfg.colsb[4] = (uint16_t)(n_cols1 * (int)sizeof(float));
+    cfg.rows[4] = (uint8_t)(k_bytes / 4);
 
     _tile_loadconfig(&cfg);
 }
@@ -258,7 +279,7 @@ static void amx_kernel_block(
     if (trace_enabled()) {
         fprintf(stderr, "amx_kernel_block rows=%d cols=%d k_chunk=%d k_bytes=%d\n", rows, cols, k_chunk, k_bytes);
     }
-    load_tilecfg(rows, cols, k_bytes);
+    load_tilecfg_1col(rows, cols, k_bytes);
     if (trace_enabled()) {
         fprintf(stderr, "tilecfg loaded\n");
     }
@@ -273,6 +294,35 @@ static void amx_kernel_block(
         fprintf(stderr, "dpbf16ps done\n");
     }
     _tile_stored(0, c, (size_t)ldc * sizeof(*c));
+    _tile_release();
+}
+
+__attribute__((target("amx-tile,amx-bf16")))
+static void amx_kernel_block_2col(
+    int rows,
+    int cols0,
+    int cols1,
+    int k_chunk,
+    const bf16_t *a_pack,
+    const bf16_t *b0_pack,
+    const bf16_t *b1_pack,
+    float *c0,
+    float *c1,
+    int ldc
+) {
+    const int k_pairs = (k_chunk + 1) / 2;
+    const int k_bytes = k_pairs * 4;
+
+    load_tilecfg_2col(rows, cols0, cols1, k_bytes);
+    _tile_loadd(0, c0, (size_t)ldc * sizeof(*c0));
+    _tile_loadd(1, c1, (size_t)ldc * sizeof(*c1));
+    _tile_loadd(2, a_pack, TILE_STRIDE_BYTES);
+    _tile_loadd(3, b0_pack, TILE_STRIDE_BYTES);
+    _tile_loadd(4, b1_pack, TILE_STRIDE_BYTES);
+    _tile_dpbf16ps(0, 2, 3);
+    _tile_dpbf16ps(1, 2, 4);
+    _tile_stored(0, c0, (size_t)ldc * sizeof(*c0));
+    _tile_stored(1, c1, (size_t)ldc * sizeof(*c1));
     _tile_release();
 }
 
@@ -317,16 +367,45 @@ static void gemm_amx(
             const int kk_block = kk / BK;
             const int k_chunk = (int)min_u64((uint64_t)BK, (uint64_t)(k - kk));
             pack_a_panel(rows, k_chunk, a + (size_t)ii * (size_t)k + (size_t)kk, k, a_pack);
-            for (int jj = 0; jj < n; jj += BN) {
+            for (int jj = 0; jj < n; jj += 2 * BN) {
                 const int jj_block = jj / BN;
                 const int cols = (int)min_u64((uint64_t)BN, (uint64_t)(n - jj));
-                const bf16_t *b_tile =
+                const bf16_t *b_tile0 =
                     b_pack + ((size_t)kk_block * (size_t)jj_blocks + (size_t)jj_block) *
                                  (BM * TILE_STRIDE_BYTES / (int)sizeof(bf16_t));
                 if (trace_enabled() && ii == 0 && kk == 0 && jj == 0) {
                     fprintf(stderr, "entering first amx block\n");
                 }
-                amx_kernel_block(rows, cols, k_chunk, a_pack, b_tile, c + (size_t)ii * (size_t)n + (size_t)jj, n);
+                const int jj_next = jj + BN;
+                if (jj_next < n) {
+                    const int jj_block1 = jj_next / BN;
+                    const int cols1 = (int)min_u64((uint64_t)BN, (uint64_t)(n - jj_next));
+                    const bf16_t *b_tile1 =
+                        b_pack + ((size_t)kk_block * (size_t)jj_blocks + (size_t)jj_block1) *
+                                     (BM * TILE_STRIDE_BYTES / (int)sizeof(bf16_t));
+                    amx_kernel_block_2col(
+                        rows,
+                        cols,
+                        cols1,
+                        k_chunk,
+                        a_pack,
+                        b_tile0,
+                        b_tile1,
+                        c + (size_t)ii * (size_t)n + (size_t)jj,
+                        c + (size_t)ii * (size_t)n + (size_t)jj_next,
+                        n
+                    );
+                } else {
+                    amx_kernel_block(
+                        rows,
+                        cols,
+                        k_chunk,
+                        a_pack,
+                        b_tile0,
+                        c + (size_t)ii * (size_t)n + (size_t)jj,
+                        n
+                    );
+                }
                 if (trace_enabled() && ii == 0 && kk == 0 && jj == 0) {
                     fprintf(stderr, "completed first amx block\n");
                 }
